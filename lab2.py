@@ -17,17 +17,24 @@ st.write(
     "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
+# Load OpenAI API key from secrets
 openai_api_key = st.secrets["openai"]["api_key"]
 if not openai_api_key:
     st.info("No valid OpenAI key detected")
 else:
-    # Create an OpenAI client.
+    # Create OpenAI client
     client = OpenAI(api_key=openai_api_key)
 
-    # Let the user upload a file via `st.file_uploader`.
+    # Sidebar: Summary Options
+    st.sidebar.header("Summary Settings")
+    summary_type = st.sidebar.radio(
+        "Choose summary format:",
+        ["100 words", "2 paragraphs", "5 bullet points"]
+    )
+    use_advanced = st.sidebar.checkbox("Use Advanced Model (GPT-4o)")
+    model = "gpt-4o" if use_advanced else "gpt-4o-mini"
+
+    # File uploader
     uploaded_file = st.file_uploader(
         "Upload a document (.txt or .pdf)", type=("txt", "pdf")
     )
@@ -42,39 +49,34 @@ else:
         else:
             st.error("Unsupported file type")
 
-    # Ask the user for a question via `st.text_area`.
-    question = st.text_area(
-        "Now ask a question about the document!",
-        placeholder="Is this course hard?",
-        disabled=not document,
-    )
+    # If document is uploaded, generate summary
+    if document:
+        st.subheader("Summary")
+        
+         # Sidebar: Language selection
+        st.sidebar.header("Language Options")
+        language = st.sidebar.selectbox(
+            "Select language for summary:",
+            ["English", "Spanish", "French", "German", "Chinese"]
+        )
 
-    if document and question:
-        st.subheader("Responses")
+        # Update the instruction to include language
+        if summary_type == "100 words":
+            instruction = f"Summarize the document in exactly 100 words in {language}."
+        elif summary_type == "2 paragraphs":
+            instruction = f"Summarize the document in 2 connecting paragraphs in {language}."
+        else:
+            instruction = f"Summarize the document in 5 bullet points in {language}."
 
-        models = [
-            "gpt-3.5-turbo",
-            "gpt-4.1",
-            "gpt-5-chat-latest",
-            "gpt-5-nano",
-        ]
-
-        responses = {}
-
-        for model in models:
-            with st.spinner(f"Querying {model}..."):
-                try:
-                    response = client.chat.completions.create(
-                        model = model,
-                        messages=[
-                             {"role": "user", "content": f"Document:\n{document}\n\nQuestion: {question}"},
-                        ]
-                    )
-                    responses[model] = response.choices[0].message.content
-                except Exception as e:
-                    responses[model] = f"Error: {e}"
-
-        for model, answer in responses.items():
-            st.markdown(f"### {model}")
-            st.write(answer)
-            st.markdown("---")
+        with st.spinner(f"Generating summary using {model}..."):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that summarizes documents."},
+                        {"role": "user", "content": f"{instruction}\n\nDocument:\n{document}"}
+                    ]
+                )
+                st.write(response.choices[0].message.content)
+            except Exception as e:
+                st.error(f"Error: {e}")
